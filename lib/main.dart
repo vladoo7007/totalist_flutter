@@ -1,8 +1,7 @@
-// VISS KODS LATVIEŠU KOMENTĀROS – UI teksti latviski, kods angliski.
 // Totalist: divas galvenās sadaļas – "Uzdevumi" un "Kalendārs".
 // Funkcija: prioritāšu karodziņi, kārtošana (prioritāte→alfabēts / alfabēts),
 // pabeigto saraksta akordeons, koplietoti notikumi ar kalendāru (punkti dienā),
-// pievienošana no abām sadaļām, lokalizācija lv.
+// pievienošana no abām sadaļām, LV lokalizācija, kompaktie kategoriju “čipi”.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -39,7 +38,6 @@ class TaskItem {
 
 // Krāsas karodziņiem
 Color priorityColor(TaskPriority p, ColorScheme cs) {
-  // Augsta=red, Vidēja=yellow, Zema=blue, None=transparent outline
   switch (p) {
     case TaskPriority.high:
       return Colors.red;
@@ -48,7 +46,7 @@ Color priorityColor(TaskPriority p, ColorScheme cs) {
     case TaskPriority.low:
       return Colors.blue;
     case TaskPriority.none:
-      return cs.outline;
+      return cs.outline; // “bezkrāsas” kontūra, kad pabeigts
   }
 }
 
@@ -120,24 +118,26 @@ class HomeShell extends StatefulWidget {
 }
 
 class _HomeShellState extends State<HomeShell> {
+  // LV: apakšējās navigācijas cilne (0=Uzdevumi, 1=Kalendārs)
   int _tab = 0;
 
-  // Koplietotais uzdevumu saraksts (viena patiesība visām lapām)
-  final List<TaskItem> _items = [];
-
-  // Pabeigto akordeona stāvoklis
+  // LV: “Pabeigtie” akordeona stāvoklis
   bool _completedExpanded = false;
 
-  // Kārtošanas režīms (true = prioritāte→alfabēts; false = alfabēts)
+  // LV: kārtošanas režīms (true = prioritāte→alfabēts; false = alfabēts)
   bool _sortByPriorityThenAlpha = true;
 
-  // Kalendāra formāts (nedēļa/mēnesis)
-  CalendarFormat _calendarFormat = CalendarFormat.month;
+  // LV: kategoriju joslas režīms (false = kompakts tikai ikonas; true = izvērsts ar tekstu)
+  bool _chipsExpanded = false;
 
-  // Atlasītā kategorija čipos (pēc noklusējuma Visi)
+  // LV: atlasītā kategorija čipos (pēc noklusējuma Visi)
   TaskCategory _selectedCat = TaskCategory.visi;
 
-  // Atlasītā diena kalendārā
+  // LV: koplietots uzdevumu saraksts (viena patiesība visai app)
+  final List<TaskItem> _items = [];
+
+  // LV: kalendāra stāvoklis
+  CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   DateTime? _selectedDay;
 
@@ -202,9 +202,7 @@ class _HomeShellState extends State<HomeShell> {
       context: context,
       isScrollControlled: true,
       builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          bottom: MediaQuery.of(ctx).viewInsets.bottom,
-        ),
+        padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
         child: _AddTaskSheet(
           presetCategory: _selectedCat == TaskCategory.visi
               ? TaskCategory.darbs
@@ -215,9 +213,7 @@ class _HomeShellState extends State<HomeShell> {
     );
 
     if (result != null) {
-      setState(() {
-        _items.add(result);
-      });
+      setState(() => _items.add(result));
     }
   }
 
@@ -242,10 +238,7 @@ class _HomeShellState extends State<HomeShell> {
       _buildCalendarPage(context, cs),
     ];
 
-    final titles = [
-      'Totalist · Uzdevumi',
-      'Totalist · Kalendārs',
-    ];
+    final titles = ['Totalist · Uzdevumi', 'Totalist · Kalendārs'];
 
     return Scaffold(
       appBar: AppBar(
@@ -313,10 +306,7 @@ class _HomeShellState extends State<HomeShell> {
         selectedIndex: _tab,
         onDestinationSelected: (i) => setState(() => _tab = i),
         destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.checklist),
-            label: 'Uzdevumi',
-          ),
+          NavigationDestination(icon: Icon(Icons.checklist), label: 'Uzdevumi'),
           NavigationDestination(
             icon: Icon(Icons.calendar_month),
             label: 'Kalendārs',
@@ -344,23 +334,77 @@ class _HomeShellState extends State<HomeShell> {
     );
   }
 
+  // LV: Kategoriju josla ar “kompakts/izvērsts” režīmu
+  // - īss pieskāriens uz čipa = izvēlēties kategoriju
+  // - ilgspiediens uz jebkura čipa = pārslēgt režīmu
+  // - papildu ActionChip “Izvērst/Sakļaut”
   Widget _buildCategoryChips(BuildContext context) {
-    final cats = TaskCategory.values;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: List.generate(cats.length, (i) {
-          final c = cats[i];
-          final selected = _selectedCat == c;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: Text(kCategoryName[c]!),
-              selected: selected,
-              onSelected: (_) => setState(() => _selectedCat = c),
+    final cs = Theme.of(context).colorScheme;
+
+    final catList = <TaskCategory>[
+      TaskCategory.visi,
+      TaskCategory.darbs,
+      TaskCategory.personigs,
+      TaskCategory.labasDomas,
+      TaskCategory.dzimsanasDienas,
+    ];
+
+    IconData iconFor(TaskCategory c) {
+      switch (c) {
+        case TaskCategory.visi:
+          return Icons.all_inbox_outlined;
+        case TaskCategory.darbs:
+          return Icons.work_outline;
+        case TaskCategory.personigs:
+          return Icons.person_outline;
+        case TaskCategory.labasDomas:
+          return Icons.lightbulb_outline;
+        case TaskCategory.dzimsanasDienas:
+          return Icons.cake_outlined;
+      }
+    }
+
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final cat in catList)
+            GestureDetector(
+              onLongPress: () =>
+                  setState(() => _chipsExpanded = !_chipsExpanded),
+              child: FilterChip(
+                label: _chipsExpanded
+                    ? Text(kCategoryName[cat]!)
+                    : const Text(''),
+                avatar: Icon(iconFor(cat)),
+                showCheckmark: false,
+                selected: _selectedCat == cat,
+                onSelected: (_) => setState(() => _selectedCat = cat),
+                side: BorderSide(
+                  color: _selectedCat == cat ? cs.primary : cs.outlineVariant,
+                ),
+                // kompaktais “miglainais” efekts – mazāks kontrasts
+                backgroundColor: _chipsExpanded
+                    ? cs.surfaceContainer
+                    : cs.surfaceContainerHigh,
+                selectedColor: _chipsExpanded
+                    ? cs.primaryContainer
+                    : cs.primaryContainer,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-          );
-        }),
+          ActionChip(
+            avatar: Icon(
+              _chipsExpanded ? Icons.unfold_less : Icons.unfold_more,
+            ),
+            label: Text(_chipsExpanded ? 'Sakļaut' : 'Izvērst'),
+            onPressed: () => setState(() => _chipsExpanded = !_chipsExpanded),
+          ),
+        ],
       ),
     );
   }
@@ -371,38 +415,40 @@ class _HomeShellState extends State<HomeShell> {
 
     return ListView(
       children: [
-        // Aktīvie
         if (active.isNotEmpty)
-          ...active.map((t) => _TaskTile(
-                item: t,
-                onToggleDone: () => _toggleCompleted(t),
-                onSetPriority: (p) => _setPriority(t, p),
-              ))
+          ...active.map(
+            (t) => _TaskTile(
+              item: t,
+              onToggleDone: () => _toggleCompleted(t),
+              onSetPriority: (p) => _setPriority(t, p),
+            ),
+          )
         else
           const Padding(
             padding: EdgeInsets.symmetric(vertical: 24),
             child: Center(child: Text('Nav uzdevumu. Pievieno jaunu!')),
           ),
         const SizedBox(height: 16),
-        // Pabeigtie (akordeons)
         ExpansionTile(
           initiallyExpanded: _completedExpanded,
           onExpansionChanged: (v) => setState(() => _completedExpanded = v),
           title: const Text('Pabeigtie'),
           children: completed.isEmpty
-              ? [
-                  const Padding(
+              ? const [
+                  Padding(
                     padding: EdgeInsets.only(bottom: 12),
                     child: Text('Šobrīd nav pabeigtu uzdevumu.'),
-                  )
+                  ),
                 ]
               : completed
-                  .map((t) => _TaskTile(
+                    .map(
+                      (t) => _TaskTile(
                         item: t,
                         onToggleDone: () => _toggleCompleted(t),
                         onSetPriority: (p) => _setPriority(t, p),
-                      ))
-                  .toList(),
+                      ),
+                    )
+                    .toList(),
         ),
       ],
     );
@@ -430,11 +476,12 @@ class _HomeShellState extends State<HomeShell> {
                   _focusedDay = foc;
                 });
               },
-              eventLoader: _eventsForDay,
-              calendarFormat: _calendarFormat,
+              // LV: bez šī formatButton metiens krita ar assert — tagad OK
               onFormatChanged: (f) => setState(() => _calendarFormat = f),
+              calendarFormat: _calendarFormat,
+              eventLoader: _eventsForDay,
               headerStyle: const HeaderStyle(
-                formatButtonVisible: true, // ir redzams, jo esam pievienojuši onFormatChanged
+                formatButtonVisible: true,
                 titleCentered: true,
               ),
               startingDayOfWeek: StartingDayOfWeek.monday,
@@ -456,27 +503,29 @@ class _HomeShellState extends State<HomeShell> {
             const SizedBox(height: 12),
             // Saraksts zem kalendāra – konkrētās dienas uzdevumi
             Expanded(
-              child: Builder(builder: (ctx) {
-                final day = _selectedDay ?? _focusedDay;
-                final es = _eventsForDay(day);
-                if (es.isEmpty) {
-                  return const Center(
-                    child: Text('Šajā dienā nav uzdevumu.'),
-                  );
-                }
-                return ListView.separated(
-                  itemCount: es.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
-                  itemBuilder: (_, i) {
-                    final t = es[i];
-                    return _TaskTile(
-                      item: t,
-                      onToggleDone: () => _toggleCompleted(t),
-                      onSetPriority: (p) => _setPriority(t, p),
+              child: Builder(
+                builder: (ctx) {
+                  final day = _selectedDay ?? _focusedDay;
+                  final es = _eventsForDay(day);
+                  if (es.isEmpty) {
+                    return const Center(
+                      child: Text('Šajā dienā nav uzdevumu.'),
                     );
-                  },
-                );
-              }),
+                  }
+                  return ListView.separated(
+                    itemCount: es.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 8),
+                    itemBuilder: (_, i) {
+                      final t = es[i];
+                      return _TaskTile(
+                        item: t,
+                        onToggleDone: () => _toggleCompleted(t),
+                        onSetPriority: (p) => _setPriority(t, p),
+                      );
+                    },
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -525,9 +574,7 @@ class _TaskTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: cs.outlineVariant.withValues(alpha: 0.6),
-            ),
+            border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.6)),
           ),
           child: Row(
             children: [
@@ -559,7 +606,7 @@ class _TaskTile extends StatelessWidget {
                   ],
                 ),
               ),
-              // "Hamburger" ar prioritātēm
+              // “Hamburger” ar prioritātēm
               PopupMenuButton<TaskPriority>(
                 tooltip: 'Prioritāte',
                 onSelected: onSetPriority,
@@ -572,10 +619,7 @@ class _TaskTile extends StatelessWidget {
                 icon: const Icon(Icons.more_vert),
               ),
               // Checkbox
-              Checkbox(
-                value: item.completed,
-                onChanged: (_) => onToggleDone(),
-              ),
+              Checkbox(value: item.completed, onChanged: (_) => onToggleDone()),
             ],
           ),
         ),
@@ -583,8 +627,7 @@ class _TaskTile extends StatelessWidget {
     );
   }
 
-  PopupMenuItem<TaskPriority> _prioItem(
-      TaskPriority p, String title, Color c) {
+  PopupMenuItem<TaskPriority> _prioItem(TaskPriority p, String title, Color c) {
     return PopupMenuItem(
       value: p,
       child: Row(
@@ -601,10 +644,7 @@ class _TaskTile extends StatelessWidget {
 // ===== Apakšējā lapa pievienošanai =====
 
 class _AddTaskSheet extends StatefulWidget {
-  const _AddTaskSheet({
-    required this.presetCategory,
-    this.presetDate,
-  });
+  const _AddTaskSheet({required this.presetCategory, this.presetDate});
 
   final TaskCategory presetCategory;
   final DateTime? presetDate;
@@ -673,10 +713,12 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
                     ),
                     items: TaskCategory.values
                         .where((c) => c != TaskCategory.visi)
-                        .map((c) => DropdownMenuItem(
-                              value: c,
-                              child: Text(kCategoryName[c]!),
-                            ))
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(kCategoryName[c]!),
+                          ),
+                        )
                         .toList(),
                     onChanged: (v) => setState(() => _category = v!),
                   ),
@@ -760,14 +802,16 @@ class _AddTaskSheetState extends State<_AddTaskSheet> {
                 label: const Text('Pievienot uzdevumu'),
                 onPressed: () {
                   if (_formKey.currentState!.validate()) {
-                    Navigator.of(context).pop(TaskItem(
-                      title: _titleCtrl.text.trim(),
-                      category: _category,
-                      priority: _priority,
-                      createdAt: DateTime.now(),
-                      dueDate: _due,
-                      completed: false,
-                    ));
+                    Navigator.of(context).pop(
+                      TaskItem(
+                        title: _titleCtrl.text.trim(),
+                        category: _category,
+                        priority: _priority,
+                        createdAt: DateTime.now(),
+                        dueDate: _due,
+                        completed: false,
+                      ),
+                    );
                   }
                 },
               ),
